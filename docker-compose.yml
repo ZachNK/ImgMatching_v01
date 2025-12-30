@@ -1,0 +1,36 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${IMAGE_NAME}
+    gpus: all
+    shm_size: "8g"
+    working_dir: /workspace/project
+    environment:
+      TZ: ${TZ}
+      REPO_DIR: ${REPO_DIR}
+      IMG_ROOT: ${IMG_ROOT}
+      EMBED_ROOT: ${EMBED_ROOT}
+      MATCH_ROOT: ${MATCH_ROOT}
+      REFERENCE_ROOT: ${REFERENCE_ROOT}
+      REFERENCE_PREFIX: ${REFERENCE_PREFIX}
+      REFERENCE_DATASET_PREFIX: ${REFERENCE_DATASET_PREFIX}
+      VIS_ROOT: ${VIS_ROOT}
+      VIS_DRAW_POINTS: ${VIS_DRAW_POINTS}
+      VIS_POINT_RADIUS: ${VIS_POINT_RADIUS}
+      VIS_ALPHA: ${VIS_ALPHA}
+      VIS_RANSAC: ${VIS_RANSAC}
+      VIS_REPROJ_TH: ${VIS_REPROJ_TH}
+      VIS_CONFIDENCE: ${VIS_CONFIDENCE}
+      VIS_ITERS: ${VIS_ITERS}
+    volumes:
+      - ${PROJECT_HOST}:/workspace/project
+      - ${CODE_HOST}:/workspace/dinov3
+      - ${WEIGHTS_HOST}:/workspace/weights:ro
+      - ${DATASET_HOST}:/opt/datasets:ro
+      - ${REFERENCE_HOST}:/opt/references
+      - ${EXPORT_HOST}:/exports
+    command: bash -lc "sleep infinity"
+    stdin_open: true
+    tty: true

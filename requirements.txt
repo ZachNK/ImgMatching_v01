@@ -1,0 +1,20 @@
+# --- Core ---
+torch>=2.2
+torchvision==0.19.1
+numpy==1.26.4
+Pillow==10.4.0
+pyyaml>=6.0.1
+tqdm>=4.66
+torchmetrics==1.4.0.post0
+transformers==4.57.1
+tokenizers==0.22.1
+
+# --- OpenCV (headless: 서버/컨테이너 용 ---
+opencv-python-headless==4.10.0.84
+
+# --- (선택) 시각화/분석 ---
+pandas==2.2.2
+matplotlib==3.9.2
+termcolor==2.4.0
+timm==0.9.16
+rich==14.2.0

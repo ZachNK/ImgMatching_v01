@@ -1,0 +1,45 @@
+# Python bytecode and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editor and IDE settings
+.vscode/
+.idea/
+*.code-workspace
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and runtime files
+*.log
+*.tmp
+
+# Local resources referenced in README
+dinov3_main/
+dinov3_weights/
+project/.mypy_cache/
+project/.pytest_cache/
+docs/hf_token.txt
+
+# Sensitive documents
+docs/etc/*.pdf
+

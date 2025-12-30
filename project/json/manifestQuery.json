@@ -1,0 +1,37 @@
+{
+  "dataset_key": "jamshill_image",
+  "weight_set": "dinov3_weights",
+  "query_embed_root": "/exports/dinov3_query_embeds",
+  "experiment": {
+    "variant": {
+      "raw": true,
+      "sub": { "use": false, "stride": [2, 4, 8] }
+    }
+  },
+  "models": [
+    {
+      "weights": ["vith16+"],
+      "target_res": 1024,
+      "embedding_cfg": null,
+      "image_groups": [
+        {
+          "folder": [
+            "250918092555_300",
+            "251107104637_300",
+            "251030172146_300_50_0_000"
+          ],
+          "indices": [1, 4584]
+        }
+      ],
+      "outputs": {
+        "global": { "npy": true, "json": true },
+        "patch":  { "npy": false, "json": false },
+        "grid":   { "npy": false, "json": false }
+      },
+      "run": {
+        "test_embedding": true,
+        "generate_denseft": false
+      }
+    }
+  ]
+}
