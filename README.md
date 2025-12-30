@@ -1,6 +1,7 @@
-﻿# ImgMatching_v01 (DINOv3 Image Matching / Embedding Pipeline, Docker)
+﻿# ImgMatching_v01 
 
-Docker Desktop 위에서 **DINOv3 기반 임베딩 생성(배치)**, **Reference(회전/크롭) 생성**, **Reference 임베딩**, **FAISS 검색/매칭**, (선택) **run.py 기반 1:1/All-vs-All 매칭** 실험을 수행하기 위한 프로젝트입니다.
+
+Docker Desktop 위에서 **DINOv3 기반 임베딩 생성(배치)**, **Reference(회전/크롭) 생성**, **Reference 임베딩**, **FAISS 검색/매칭**, (선택) **run.py 기반 1:1/All-vs-All 매칭** 실험을 수행하기 위한 프로젝트입니다. (DINOv3 Image Matching / Embedding Pipeline, Docker)
 
 - 배치 임베딩은 `manifest*.json` + `data_key.json`로 실행됩니다.
 - Patch 후처리에서 **TopK/PCA 로직은 제거**되어, 현재는 `raw / subsample` 변형만 지원합니다(`project/imatch/postprocess.py`, `project/imatch/variants.py`).
