@@ -20,6 +20,7 @@ from imatch.loading import (
     dataset_embed_root,
     weights_path,
     file_prefix,
+    frame_token,
     img_path,
     load_image,
     sanitize_group_token,
@@ -93,7 +94,7 @@ def _build_context(
     """Assemble frequently reused values for a single inference run."""
     hub_entry, key, dt_type = weights_path(weight) # e.g. "dinov3_vit7b16", "/opt/weights/dinov3_vit7b16_pretrain_sat493m-a6675841.pth", "SAT"
     image_spec = img_path(altitude, index, dataset_key=dataset_key)
-    prefix = file_prefix(image_spec.label, index) # e.g. "200_0150"
+    prefix = file_prefix(image_spec.label, index, dataset_key=dataset_key) # e.g. "200_0150"
 
     # Derive embedding configuration when not explicitly provided.
     default_embedding_cfg = f"res{target_res}"
@@ -105,7 +106,7 @@ def _build_context(
     # Token naming follows: token_type ??embedding_cfg ??variant ??weight_id ??dataset_type ??altitude ??index
     label_display = normalize_group_value(altitude)
     label_token = sanitize_group_token(altitude)
-    index_str = f"{int(index):04d}"
+    index_str = frame_token(altitude, index, dataset_key=dataset_key)
     global_base = f"GlobalToken_{resolved_embedding_cfg}_{resolved_variant_label}_{hub_entry}_{dt_type}_{label_token}_{index_str}"
     patch_base = f"PatchToken_{resolved_embedding_cfg}_{resolved_variant_label}_{hub_entry}_{dt_type}_{label_token}_{index_str}"
     patch_grid_base = f"PatchGrid_{resolved_embedding_cfg}_{resolved_variant_label}_{hub_entry}_{dt_type}_{label_token}_{index_str}"
@@ -567,6 +568,9 @@ def run_global_embedding(
         "target_res": target_res,
         "rotations": rotations_config if isinstance(rotations_config, (list, tuple)) else [0],
         "aggregation": aggregation_config if isinstance(aggregation_config, str) else "single",
+        "reference": {
+            "source_file": image_path.as_posix(),
+        },
     }
 
     if global_plan["json"] and global_tokens is not None:

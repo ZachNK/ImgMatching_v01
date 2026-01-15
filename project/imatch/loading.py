@@ -7,7 +7,7 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from collections import defaultdict
 
 from PIL import Image
@@ -20,11 +20,12 @@ EMBED_ROOT = Path(os.getenv("EMBED_ROOT", "/exports/dinov3_embeds"))
 MATCH_ROOT = Path(os.getenv("MATCH_ROOT", "/exports/dinov3_match"))
 VIS_ROOT = Path(os.getenv("VIS_ROOT", "/exports/dinov3_vis"))
 REFERENCE_ROOT = Path(os.getenv("REFERENCE_ROOT") or os.getenv("QUERY_ROOT", "/opt/references"))
-REFERENCE_PREFIX = os.getenv("REFERENCE_PREFIX", os.getenv("QUERY_PREFIX", "R"))
-REFERENCE_DATASET_PREFIX = os.getenv(
-    "REFERENCE_DATASET_PREFIX",
-    os.getenv("QUERY_DATASET_PREFIX", "references_"),
-)
+REFERENCE_PREFIX = (os.getenv("REFERENCE_PREFIX") or os.getenv("QUERY_PREFIX") or "").strip()
+REFERENCE_DATASET_PREFIX = (
+    os.getenv("REFERENCE_DATASET_PREFIX")
+    or os.getenv("QUERY_DATASET_PREFIX")
+    or ""
+    ).strip()
 REFERENCE_EMBED_ROOT = Path(
     os.getenv("REFERENCE_EMBED_ROOT") or os.getenv("QUERY_EMBED_ROOT", "/exports/dinov3_reference_embeds")
 )
@@ -109,6 +110,11 @@ def _format_index(value: Any) -> str:
     return f"{numeric:04d}"
 
 
+IMAGE_EXTENSIONS = ("jpg", "jpeg", "png", "bmp", "tif", "tiff", "webp")
+_TRAILING_FRAME_RX = re.compile(r"(\d+)(?=\.[^.]+$)")
+_FRAME_FILENAME_CACHE: Dict[Tuple[str, str, int], str] = {}
+
+
 @dataclass(frozen=True)
 class DatasetImageEntry:
     dataset_key: str
@@ -123,16 +129,7 @@ class DatasetImageEntry:
         return "/".join(parts)
 
     def build_filename(self, index: int) -> str:
-        frame = _format_index(index)
-        return self.filename_template.format(
-            capture_id=self.capture_id,
-            label=self.label,
-            label_token=self.label_token,
-            dataset_key=self.dataset_key,
-            index=int(index),
-            idx=int(index),
-            frame=frame,
-        )
+        return _resolve_filename(self, index)
 
 
 @dataclass(frozen=True)
@@ -217,6 +214,95 @@ def _build_image_entry(
     )
 
 
+def _build_frame_regex(template: str, entry: DatasetImageEntry) -> Optional[re.Pattern]:
+    token_keys = ("frame", "index", "idx")
+    if not any(f"{{{key}}}" in template for key in token_keys):
+        return None
+    pattern = re.escape(template)
+    replacements = {
+        "{capture_id}": entry.capture_id,
+        "{label}": entry.label,
+        "{label_token}": entry.label_token,
+        "{dataset_key}": entry.dataset_key,
+    }
+    for placeholder, value in replacements.items():
+        pattern = pattern.replace(re.escape(placeholder), re.escape(str(value)))
+    for key in token_keys:
+        pattern = pattern.replace(re.escape(f"{{{key}}}"), r"(?P<frame>\d+)")
+    return re.compile(f"^{pattern}$", re.IGNORECASE)
+
+
+def _find_existing_filename(entry: DatasetImageEntry, index: int) -> Optional[str]:
+    folder_path = DATASET_ROOT / entry.folder
+    if not folder_path.exists():
+        return None
+
+    idx_int = int(index)
+    regex = _build_frame_regex(entry.filename_template, entry)
+
+    def _matches(name: str) -> Optional[str]:
+        if regex:
+            m = regex.match(name)
+            if m and "frame" in m.groupdict():
+                try:
+                    if int(m.group("frame")) == idx_int:
+                        return m.group("frame")
+                except ValueError:
+                    pass
+        m2 = _TRAILING_FRAME_RX.search(name)
+        if m2:
+            try:
+                if int(m2.group(1)) == idx_int:
+                    return m2.group(1)
+            except ValueError:
+                return None
+        return None
+
+    candidates: List[Path] = []
+    for ext in IMAGE_EXTENSIONS:
+        candidates.extend(sorted(folder_path.glob(f"*.{ext}")))
+    if not candidates:
+        candidates = [p for p in folder_path.iterdir() if p.is_file()]
+
+    for path in candidates:
+        token = _matches(path.name)
+        if token is not None:
+            return path.name
+    return None
+
+
+def _extract_frame_token(name: str, fallback_index: int) -> str:
+    m = _TRAILING_FRAME_RX.search(name)
+    if m:
+        return m.group(1)
+    return _format_index(fallback_index)
+
+
+def _resolve_filename(entry: DatasetImageEntry, index: int) -> str:
+    cache_key = (entry.dataset_key, entry.label, int(index))
+    cached = _FRAME_FILENAME_CACHE.get(cache_key)
+    if cached:
+        return cached
+
+    existing = _find_existing_filename(entry, index)
+    if existing:
+        _FRAME_FILENAME_CACHE[cache_key] = existing
+        return existing
+
+    frame = _format_index(index)
+    filename = entry.filename_template.format(
+        capture_id=entry.capture_id,
+        label=entry.label,
+        label_token=entry.label_token,
+        dataset_key=entry.dataset_key,
+        index=int(index),
+        idx=int(index),
+        frame=frame,
+    )
+    _FRAME_FILENAME_CACHE[cache_key] = filename
+    return filename
+
+
 def _load_dataset_state(dataset_key: str) -> DatasetState:
     if dataset_key not in DATASETS:
         raise KeyError(f"[loading] Unknown dataset key: {dataset_key}")
@@ -297,9 +383,19 @@ def weights_path(key: str) -> List[str]:
     raise KeyError(f"[loading(weights_path)] Weight key '{key}' not found in registry '{WEIGHTS_KEY}'.")
 
 
-def file_prefix(imgAlt: Any, imgIndex: Any) -> str:
+def frame_token(imgAlt: Any, imgIndex: Any, dataset_key: str | None = None) -> str:
+    """
+    Resolve the frame token using the actual image filename when available.
+    Falls back to zero-padded index formatting.
+    """
+    image_spec = img_path(imgAlt, imgIndex, dataset_key=dataset_key)
+    return _extract_frame_token(image_spec.filename, imgIndex)
+
+
+def file_prefix(imgAlt: Any, imgIndex: Any, dataset_key: str | None = None) -> str:
     label = _sanitize_token(_normalize_label(imgAlt))
-    return f"{label}_{_format_index(imgIndex)}"
+    token = frame_token(imgAlt, imgIndex, dataset_key=dataset_key)
+    return f"{label}_{token}"
 
 
 def normalize_group_value(value: Any) -> str:

@@ -43,8 +43,8 @@ ACTIVE_DATASET_KEY = os.getenv("DATASET_KEY", DEFAULT_DATASET_KEY)
 reloc_prefix = ""
 
 def _default_reference_dirs() -> Sequence[Path]:
-    base_dir = REFERENCE_ROOT / f"{REFERENCE_DATASET_PREFIX}{ACTIVE_DATASET_KEY}"
-    pattern = f"{REFERENCE_PREFIX}*"
+    base_dir = REFERENCE_ROOT 
+    pattern = "*"
     if not base_dir.exists():
         return ()
     return tuple(sorted(p for p in base_dir.glob(pattern) if p.is_dir()))

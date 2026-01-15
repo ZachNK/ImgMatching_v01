@@ -25,10 +25,10 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /workspace/project
 
-RUN printf '#!/usr/bin/env bash\npython /workspace/project/run.py "$@"\n' \
-      > /usr/local/bin/run \
- && printf '#!/usr/bin/env bash\npython /workspace/project/visualize.py "$@"\n' \
-      > /usr/local/bin/vis \
- && chmod +x /usr/local/bin/run /usr/local/bin/vis
+# RUN printf '#!/usr/bin/env bash\npython /workspace/project/run.py "$@"\n' \
+#       > /usr/local/bin/run \
+#  && printf '#!/usr/bin/env bash\npython /workspace/project/visualize.py "$@"\n' \
+#       > /usr/local/bin/vis \
+#  && chmod +x /usr/local/bin/run /usr/local/bin/vis
 
 CMD ["bash", "-lc", "sleep infinity"]

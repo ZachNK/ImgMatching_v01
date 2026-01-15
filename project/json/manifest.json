@@ -1,5 +1,5 @@
 {
-  "dataset_key": "jamshill_image",
+  "dataset_key": "jamshill_flight",
   "weight_set": "dinov3_weights",
   "reference_embed_root": "/exports/dinov3_reference_embeds",
   "experiment": {
@@ -10,27 +10,25 @@
   },
   "models": [
     {
-      "weights": ["vith16+"],
+      "weights": ["vitl16", "vitl16sat", "vits16", "vits16+"],
       "target_res": 1024,
       "embedding_cfg": null,
       "image_groups": [
         {
           "folder": [
-            "250918092555_300",
-            "251107104637_300",
-            "251030172146_300_50_0_000"
+            "251124155712"
           ],
-          "indices": [1, 4881]
+          "indices": [1, 132]
         }
       ],
       "outputs": {
-        "global": { "npy": true, "json": true },
+        "global": { "npy": false, "json": false },
         "patch":  { "npy": true, "json": true },
         "grid":   { "npy": true, "json": true }
       },
       "run": {
         "test_embedding": true,
-        "generate_denseft": true
+        "generate_denseft": false
       }
     }
   ]

@@ -16,6 +16,7 @@ from imatch.loading import (
     dataset_embed_root,
     weights_path,
     file_prefix,
+    frame_token,
     sanitize_group_token,
     normalize_group_value,
 )
@@ -42,8 +43,8 @@ def _build_context(
     hub_entry, _, dataset_type = weights_path(weight) # e.g. dinov3_vitl16
     label_str = normalize_group_value(altitude)
     label_token = sanitize_group_token(altitude)
-    index_str = f"{int(index):04d}"
-    prefix = file_prefix(label_str, index) # e.g. 200_0150
+    index_str = frame_token(altitude, index, dataset_key=dataset_key)
+    prefix = file_prefix(label_str, index, dataset_key=dataset_key) # e.g. 200_0150
     base_variant_label, _ = format_variant_label(variant, variant_params)
     resolved_variant_label = variant_label or base_variant_label
 

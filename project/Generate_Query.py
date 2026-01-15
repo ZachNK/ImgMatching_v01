@@ -26,7 +26,7 @@ ANGLES: Sequence[float] = (45.0, 90.0, 135.0, 180.0)
 CROP_RATIO: float = 0.5
 DATASET_KEY = os.getenv("DATASET_KEY", DEFAULT_DATASET_KEY)
 SOURCE_ROOT = IMG_ROOT / DATASET_KEY
-REFERENCE_BASE = REFERENCE_ROOT / f"{REFERENCE_DATASET_PREFIX}{DATASET_KEY}"
+REFERENCE_BASE = REFERENCE_ROOT
 
 
 @dataclass(frozen=True)
@@ -42,7 +42,7 @@ FOLDERS: Sequence[str] = (
 TASKS: Iterable[ReferenceTask] = tuple(
     ReferenceTask(
         source=SOURCE_ROOT / folder,
-        destination=REFERENCE_BASE / f"{REFERENCE_PREFIX}{folder}",
+        destination=REFERENCE_BASE / folder,
     )
     for folder in FOLDERS
 )

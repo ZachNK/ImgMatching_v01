@@ -119,9 +119,14 @@ def _build_folder_map(dataset_key: str, dataset_cfg: Dict[str, Any]) -> Dict[str
 def _normalize_folder_list(field: Any) -> List[str]:
     if field is None:
         raise ValueError("\033[91m[Error] Image group must define 'folder'.\033[0m")
+    def _coerce(item: Any) -> str:
+        if isinstance(item, dict) and "folder" in item:
+            return str(item.get("folder")).strip()
+        return str(item).strip()
     if isinstance(field, list):
-        return [str(v).strip() for v in field if str(v).strip()]
-    return [str(field).strip()]
+        return [_coerce(v) for v in field if _coerce(v)]
+    coerced = _coerce(field)
+    return [coerced] if coerced else []
 
 
 def _resolve_dataset_context(manifest: Dict[str, Any]) -> Tuple[str, Dict[str, Tuple[str, str, str]]]:
@@ -182,11 +187,14 @@ def expand_group_entries(
                 f"\033[91m[Error] Folder '{folder_name}' is not registered under dataset '{dataset_key}'.\033[0m"
             )
         capture_id, label_display, label_token = info
+        # Use folder name for altitude/label token to keep export paths aligned to folder.
+        altitude_value = folder_name
+        label_token = sanitize_group_token(folder_name)
         expanded.append(
             {
                 "name": folder_name,
                 "capture_id": capture_id,
-                "altitude": label_display,
+                "altitude": altitude_value,
                 "label_token": label_token,
                 "indices": idx_list,
             }
@@ -218,7 +226,7 @@ def _normalize_outputs(outputs: Optional[Dict[str, Any]]) -> Dict[str, Dict[str,
             if key in outputs:
                 plan[key] = _parse_output_entry(outputs[key])
     if not any(plan[k]["npy"] or plan[k]["json"] for k in TOKEN_KINDS):
-        for key in TOKEN_KINDS:
+        for key in TOKEN_KINDS: 
             plan[key] = {"npy": True, "json": True}
     return plan
 

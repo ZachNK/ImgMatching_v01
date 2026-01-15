@@ -29,6 +29,7 @@ import argparse
 import json
 import os
 import traceback
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -59,8 +60,8 @@ TOKEN_KINDS = ("global", "patch", "grid")
 BASE_DIR = Path(__file__).resolve().parent
 DATA_KEY_PATH = BASE_DIR / "json/data_key.json"
 REFERENCE_ROOT_ENV = Path(os.getenv("REFERENCE_ROOT", "/opt/references"))
-REFERENCE_PREFIX_ENV = os.getenv("REFERENCE_PREFIX", "R")
-REFERENCE_DATASET_PREFIX_ENV = os.getenv("REFERENCE_DATASET_PREFIX", "references_")
+REFERENCE_PREFIX_ENV = os.getenv("REFERENCE_PREFIX", "")
+REFERENCE_DATASET_PREFIX_ENV = os.getenv("REFERENCE_DATASET_PREFIX", "")
 
 
 @dataclass
@@ -160,9 +161,14 @@ def _build_folder_map(dataset_key: str, dataset_cfg: Dict[str, Any]) -> Dict[str
 def _normalize_folder_list(field: Any) -> List[str]:
     if field is None:
         raise ValueError("\033[91m[Error] Image group must define 'folder'.\033[0m")
+    def _coerce(item: Any) -> str:
+        if isinstance(item, dict) and "folder" in item:
+            return str(item.get("folder")).strip()
+        return str(item).strip()
     if isinstance(field, list):
-        return [str(v).strip() for v in field if str(v).strip()]
-    return [str(field).strip()]
+        return [_coerce(v) for v in field if _coerce(v)]
+    coerced = _coerce(field)
+    return [coerced] if coerced else []
 
 
 def _normalize_indices(field: Any, expected: int) -> List[List[int]]:
@@ -237,7 +243,7 @@ def expand_reference_entries(
     indices_per_folder = _normalize_indices(group.get("indices"), len(folders))
     rotations_per_folder = _normalize_rotations(group.get("rotation"), len(folders))
 
-    dataset_dir = reference_root / f"{dataset_prefix}{dataset_key}"
+    dataset_dir = reference_root 
     expanded: List[Dict[str, Any]] = []
     for folder_name, idx_list, rot_list in zip(folders, indices_per_folder, rotations_per_folder):
         info = folder_map.get(folder_name)
@@ -246,12 +252,14 @@ def expand_reference_entries(
                 f"\033[91m[Error] Folder '{folder_name}' is not registered under dataset '{dataset_key}'.\033[0m"
             )
         capture_id, label_display, label_token = info
-        reference_dir = dataset_dir / f"{reference_prefix}{folder_name}"
+        reference_dir = dataset_dir / {folder_name}
+        altitude_value = folder_name
+        label_token = sanitize_group_token(folder_name)
         expanded.append(
             {
                 "name": folder_name,
                 "capture_id": capture_id,
-                "altitude": label_display,
+                "altitude": altitude_value,
                 "label_token": label_token,
                 "reference_dir": reference_dir,
                 "indices": idx_list,
@@ -361,11 +369,23 @@ def _resolve_reference_matches(
         print(f"\033[91m[WARN] Reference directory missing, skipping: {reference_dir}\033[0m")
         return []
 
-    stem = f"{capture_id}_{label_token}_{int(index_val):04d}_rot{int(rotation):03d}"
+    idx_int = int(index_val)
+    rotation_tag = f"rot{int(rotation):03d}"
+    regex = re.compile(
+        rf"^{re.escape(capture_id)}_{re.escape(label_token)}_(\d+)_rot{int(rotation):03d}(?:_|$)",
+        re.IGNORECASE,
+    )
     matches: List[Path] = []
     for suffix in SUPPORTED_SUFFIXES:
-        pattern = f"{stem}_*{suffix}"
-        matches.extend(sorted(reference_dir.glob(pattern)))
+        pattern = f"*{rotation_tag}*{suffix}"
+        for path in sorted(reference_dir.glob(pattern)):
+            m = regex.match(path.stem)
+            if m:
+                try:
+                    if int(m.group(1)) == idx_int:
+                        matches.append(path)
+                except ValueError:
+                    continue
 
     # Deduplicate while preserving order.
     seen = {}
