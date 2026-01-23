@@ -10,7 +10,7 @@
   },
   "models": [
     {
-      "weights": ["vitl16"],
+      "weights": ["vitl16sat", "vits16", "vits16+"],
       "target_res": 1024,
       "embedding_cfg": null,
       "image_groups": [

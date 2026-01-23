@@ -4,8 +4,9 @@ CoarseLocalizationInfo DTO (Redis interface).
 
 - Mirrors project/match_faiss_gpu.py search behavior (IndexFlatIP + L2 norm).
 - Saves one JSON per search embedding (no per-weight aggregation).
-- Output schema matches DTO.CoarseLocalizationInfo:
-    encoder, backend, dim, metric, topk, timing_ms{embed,search,total}, results[{rank,path,filename,score}]
+- Output schema matches DTO.CoarseLocalizationInfo with extra index timing:
+    encoder, backend, dim, metric, topk, timing_ms{embed,search,total}, index_build_ms,
+    results[{rank,path,filename,score}]
 
 e.g.
 1) 경로 환경변수 세팅
@@ -170,12 +171,15 @@ def run_single_weight(
     }[direction]
     print(f"\n[INFO] Processing weight={weight} mode={mode} direction={direction_label}")
 
-    idx_start = time.perf_counter()
+    load_start = time.perf_counter()
     index_vecs, index_records, index_timing = _load_records(
         index_root, f"{weight}:{index_role}", show_progress=show_progress
     )
+    load_ms = (time.perf_counter() - load_start) * 1000.0
+
+    build_start = time.perf_counter()
     index, used_gpu = _build_index(index_vecs, use_gpu=use_gpu)
-    index_build_ms = (time.perf_counter() - idx_start) * 1000.0
+    index_build_ms = (time.perf_counter() - build_start) * 1000.0
 
     search_vecs, search_records, search_timing = _load_records(
         search_root, f"{weight}:{search_role}", show_progress=show_progress
@@ -191,7 +195,7 @@ def run_single_weight(
     print(
         f"[INFO] Index vectors: {len(index_records)} ({index_role}), "
         f"Search vectors: {len(search_records)} ({search_role}), "
-        f"index_build_ms={index_build_ms:.2f}"
+        f"index_build_ms={index_build_ms:.2f}, index_load_ms={load_ms:.2f}"
     )
 
     iter_records = enumerate(search_records, start=1)
@@ -258,6 +262,7 @@ def run_single_weight(
                 "results": [vars(h) for h in hits],
             }
 
+        body["index_build_ms"] = index_build_ms
         out_path = out_dir / f"{srec.vec_path.stem}_{direction_key}_top{k_eff}_redis.json"
         out_path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
 
