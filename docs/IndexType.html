@@ -1,0 +1,483 @@
+﻿<!DOCTYPE html>
+<html>
+    <style>
+        .diagonal-line {
+            width: 180px;
+            height: 60px;
+            background: linear-gradient(33.5deg, transparent 49.5%, black 49.75%, black 50.25%, transparent 50.5%);
+        }
+        .center-container{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        table{
+            border-collapse: collapse;
+        }
+        th, td{
+            width: 180px;
+            height: 60px;
+            text-align: center;
+            border: 1px solid #000;
+
+            vertical-align: top;
+            vertical-align: bottom;
+            vertical-align: middle;
+        }
+    </style>
+    <head>
+        <script>
+        MathJax = {
+            tex: {
+            inlineMath: [['$', '$'], ['\\(', '\\)']],
+            displayMath: [['$$', '$$'], ['\\[', '\\]']]
+            }
+        };
+        </script>
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+        <title>DINOv3+FAISS 인덱스 파라미터 요약</title>
+    </head>
+    <body>
+        <h2 align="center">ImgMatching_v01 / faiss_4Redis.py 인덱스 파라미터 정리</h2>
+        <hr>
+        <pre>
+        </pre>
+        <div class="center-container">
+            <table>
+                <tr>
+                    <th scope="col" class="diagonal-line"><div>&emsp;&emsp;&emsp;&emsp;&emsp;Index<br>&emsp;&emsp;&emsp;&emsp;&emsp;Type</div>Hyper-&emsp;&emsp;&emsp;&emsp;<br>Parameters&emsp;&emsp;&emsp;&emsp;</th>
+                    <th scope="col">Flat</th>
+                    <th scope="col">IVF</th>
+                    <th scope="col">IVFPQ</th>
+                    <th scope="col">PQ</th>
+                    <th scope="col">HNSW</th>
+                    <th scope="col">LSH</th>
+                </tr>
+                <tr id="L2">
+                    <td>L2</td>
+                    <td><b>faiss.IndexFlatL2</b><h6><span style="color:red">metric=faiss.METRIC_L2</span></h6></td>
+                    <td><b>faiss.IndexIVFFlat</b><h6><span style="color:red">quantizer=IndexFlatL2<br>metric=faiss.METRIC_L2</span></h6></td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:red">quantizer=IndexFlatL2<br>metric=faiss.METRIC_L2</span></h6></td>
+                    <td><b>faiss.IndexPQ</b><h6><span style="color:red">metric=faiss.METRIC_L2</span></h6></td>
+                    <td><b>faiss.IndexHNSWFlat</b><h6><span style="color:red">metric=faiss.METRIC_L2</span></h6></td>
+                    <td>&mdash;</td>
+                </tr>
+                <tr id="IP">
+                    <td>IP</td>
+                    <td><b>faiss.IndexFlatIP</b><h6><span style="color:red">metric=faiss.METRIC_INNER_PRODUCT</span></h6></td>
+                    <td><b>faiss.IndexIVFFlat</b><h6><span style="color:red">quantizer=IndexFlatIP<br>metric=faiss.METRIC_INNER_PRODUCT</span></h6></td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:red">quantizer=IndexFlatIP<br>metric=faiss.METRIC_INNER_PRODUCT</span></h6></td>
+                    <td><b>faiss.IndexPQ</b><h6><span style="color:red">metric=faiss.METRIC_INNER_PRODUCT</span></h6></td>
+                    <td><b>faiss.IndexHNSWFlat</b><h6><span style="color:red">metric=faiss.METRIC_INNER_PRODUCT</span></h6></td>
+                    <td><b>faiss.IndexLSH</b><h6><span style="color:red">lsh_nbits=&lt;lsh_nbits&gt;</span></h6></td>
+                </tr>
+                <tr id="nlist">
+                    <td>nlist</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexIVFFlat</b><h6><span style="color:red">nlist=&lt;nlist&gt;</span></h6></td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:red">nlist=&lt;nlist&gt;</span></h6></td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                </tr>
+                <tr id="nprobe">
+                    <td>nprobe</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexIVFFlat</b><h6><span style="color:blue">index.nprobe=&lt;nprobe&gt;</span></h6></td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:blue">index.nprobe=&lt;nprobe&gt;</span></h6></td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                </tr>
+                <tr id="m">
+                    <td>m</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:red">m=&lt;m&gt;</span></h6></td>
+                    <td><b>faiss.IndexPQ</b><h6><span style="color:red">m=&lt;m&gt;</span></h6></td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                </tr>
+                <tr id="nbits">
+                    <td>nbits</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexIVFPQ</b><h6><span style="color:red">nbits=&lt;nbits&gt;</span></h6></td>
+                    <td><b>faiss.IndexPQ</b><h6><span style="color:red">nbits=&lt;nbits&gt;</span></h6></td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexLSH</b><h6><span style="color:red">lsh_nbits=&lt;lsh_nbits&gt;</span></h6></td>
+                </tr>
+                <tr id="residual">
+                    <td>residual</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexIVFPQ</b><h6></h6></td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                </tr>
+                <tr id="M">
+                    <td>M</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td>&mdash;</td>
+                    <td><b>faiss.IndexHNSWFlat</b><h6><span style="color:red">M=&lt;M&gt;</span></h6></td>
+                    <td>&mdash;</td>
+                </tr>
+            </table>
+        </div>
+        <hr>
+        <div class="description">
+            <h2>1. 공통 거리 정의 (Metric)</h2>
+            <pre>
+            </pre>
+            <h4>metric (Flat/IVF/HNSW) — 계산식은 동일, 적용 위치/효과가 다름</h4>
+            <div>
+                <p>입력:</p>
+                <p>
+                    $$
+                        Inputs = \begin{bmatrix} x \\ y \end{bmatrix},\quad x,y \in \mathbb{R}^{d}
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>계산:</p>
+                <p>
+                    $$
+                        L2(x,y) = \sum_{i=1}^{d}\left(x_{i}-y_{i}\right)^{2}
+                    $$
+                    $$
+                        IP(x,y) = \sum_{i=1}^{d}\left(x_{i}\cdot y_{i}\right)
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>출력:</p>
+                <p>
+                    $$
+                        Outputs = \begin{bmatrix} L2(x,y) \\ IP(x,y) \end{bmatrix},\quad d=\text{vector dimension (같은 }d\text{ 사용)}
+                    $$
+                </p>
+                <p>여기서 $L2$는 L2 거리, $IP$는 내적(코사인 시 정규화 후 사용)이며 두 식 모두 차원 $d$까지 합산한다.</p>
+            </div>
+            <div>
+                <p>적용 차이:</p>
+                <ul>
+                    <li><b>Flat</b>: 전체 벡터에 직접 적용하여 랭킹.</li>
+                    <li><b>IVF</b>: centroid 선택에도 동일 metric 사용 → 어떤 리스트를 볼지 결정.</li>
+                    <li><b>HNSW</b>: 그래프 탐색 시 이웃 선택/갱신에 동일 metric 사용.</li>
+                </ul>
+            </div>
+            <div>
+                <p>L2 vs IP 구체 비교:</p>
+                <ul>
+                    <li><b>L2</b>: 거리 최소화가 목표. 입력 벡터를 <u>정규화하지 않거나</u> 필요 시만 정규화. Flat이면 <code>IndexFlatL2</code>, IVF/HNSW 생성 시 metric=L2 선택.</li>
+                    <li><b>IP</b>: 내적 최대화가 목표. 코사인 검색 시 보통 <u>L2 정규화 후 IP</u> 사용. Flat은 <code>IndexFlatIP</code> + normalize, IVF/HNSW도 동일.</li>
+                    <li>정렬 방향: L2는 오름차순(작을수록 근접), IP는 내림차순(클수록 근접).</li>
+                </ul>
+            </div>
+            <pre>
+            </pre>
+            <hr>
+            <h2>2. IVF 계열</h2>
+            <pre>
+            </pre>
+            <h4>nlist (IVF/IVFPQ) — 군집 개수</h4>
+            <div>
+                <p>입력:</p>
+                <p>
+                    $$
+                        Inputs = \begin{bmatrix} X_{train} \\ k=nlist \end{bmatrix}
+                    $$
+                    $$
+                        X_{train}=\{x_{1},\dots,x_{N_{\text{train}}}\},\ x_i\in\mathbb{R}^{d},\quad k=nlist\in\mathbb{N}
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>계산:</p>
+                <p>
+                    $$
+                        \text{(1) 초기 }c_i\ (i=1..k)\text{ 선정}
+                    $$
+                    $$
+                        \text{(2) 할당 } S_i = \{x \mid i = \arg\min_{j} L2(x,c_{j})\}
+                    $$
+                    $$
+                        \text{(3) 갱신 } c_i = \frac{1}{|S_i|}\sum_{x\in S_i} x
+                    $$
+                </p>
+                <p>여기서 $c_i$는 $i$번째 클러스터의 중심(centroid), $S_i$는 그 클러스터에 속한 벡터 집합이다. (2)-(3)을 수렴할 때까지 반복하는 것이 k-means 학습이며, $k=nlist$는 리스트(클러스터) 개수를 뜻한다.</p>
+            </div>
+            <div>
+                <p>출력:</p>
+                <p>
+                    $$
+                        Output = C=\{c_{1},\dots,c_{k}\} 
+                    $$
+                    $$
+                        C \quad \in\mathbb{R}^{k\times d} 
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>적용 차이:</p>
+                <ul>
+                    <li><b>IVF</b>: 리스트 내부에 <u>원본 벡터</u>를 저장, 최종 거리는 정확 계산.</li>
+                    <li><b>IVFPQ</b>: 리스트 내부에 <u>잔차 PQ 코드</u>를 저장, 최종 거리는 PQ 근사로 계산 → 메모리↓/속도↑.</li>
+                </ul>
+            </div>
+            <pre>
+            </pre>
+            <h4>nprobe (IVF/IVFPQ) — 탐색할 리스트 수</h4>
+            <div>
+                <p>입력:</p>
+                <p>
+                    $$
+                        Inputs = \begin{bmatrix} q \\ C=\{c_{1},\dots ,c_{k}\} \\ nprobe \end{bmatrix},\quad q \in \mathbb{R}^{d},\ C \in \mathbb{R}^{k\times d},\ nprobe \in \mathbb{N}
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>계산:</p>
+                <p>
+                    $$
+                        d_i = \text{dist}(q,c_i),\ i=1..k \quad (\text{L2는 작은 값, IP는 큰 값})
+                    $$
+                    $$
+                        P = \text{arg top-}nprobe\ \{d_i\}_{i=1}^{k}
+                    $$
+                </p>
+                <p>$d_i$는 쿼리 $q$와 각 centroid $c_i$ 사이의 거리/유사도이며, L2면 오름차순, IP면 내림차순으로 상위 $nprobe$개 인덱스 집합 $P$를 고른다.</p>
+            </div>
+            <div>
+                <p>출력:</p>
+                <p>
+                    $$
+                        P = \{i_{1},\dots,i_{nprobe}\},\ i_j \in \{1,\dots,k\}
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>적용 차이:</p>
+                <ul>
+                    <li><b>IVF</b>: 선택된 리스트에서 <u>정확 거리</u>를 계산.</li>
+                    <li><b>IVFPQ</b>: 선택된 리스트에서 <u>PQ 근사 거리</u>를 계산 → nprobe를 조금 더 높여 recall을 보정하는 경우가 많음.</li>
+                </ul>
+                <p>대략 후보 수 $\approx nprobe \cdot (N/nlist)$. nprobe↑ → recall↑·지연↑.</p>
+            </div>
+            <pre>
+            </pre>
+            <hr>
+            <h2>3. PQ / IVFPQ 계열</h2>
+            <pre>
+            </pre>
+            <h3>구현 방식:</h3>
+            <div>
+                <p>
+                    Product Qunatization (PQ)는 고차원 벡터를 여러 개의 저차원 서브 벡터로 분할하고,<br>각 서브 벡터를 독립적으로 양자화하여 압축하는 방식. 이 과정은 다음과 같이 진행한다.
+                </p>
+                <div>
+                    <blockquote><h4>1. 벡터 분할 (Vector Decomposition):</h4> 원본 $D$ 차원 벡터 $x$를 $m$개의 $D/m$차원 서브 벡터 $x_{1}$, $x_{2}$, $\dots$, $x_{m}$으로 나눈다.</blockquote>
+                </div>
+                <div>
+                    <blockquote><h4>2. 코드북 학습 (Codebook Learning):</h4> 각 서브 벡터 공간에 대해 독립적으로 $k$개의 코드워드 (centroid)로 구성된 코드북을 학습함. <br>이는 K-means 클러스터링과 같은 알고리즘을 사용하여 수행될 수 있다.</blockquote>
+                </div>
+                <div>
+                    <blockquote><h4>3. 양자화 (Quantization):</h4> 각 서브 벡터는 해당 서브 벡터 공간의 코드북에서 가장 가까운 코드워드로 대체된다. <br> 즉, $x_{i}$는 $c_{i,j}$로 양자화된다.</blockquote>
+                </div>
+                <div>
+                    <blockquote><h4>4. 인덱스 생성:</h4> 원본 벡터는 각 서브 벡터의 코드워드 인덱스 시퀀스로 표현된다.<br> 예를 들어, 벡터 $x$는 $(idx_{1}, idx_{2}, \dots, idx_{m})$으로 저장된다.</blockquote>
+                </div>
+            </div>
+            <h4>m (PQ/IVFPQ) — 서브벡터 개수</h4>
+            <div>
+                <blockquote>
+                    <p>입력:</p>
+                    <p>
+                        $$
+                            Inputs = \begin{bmatrix} d \\ m \end{bmatrix}
+                        $$
+                        $$ 
+                            d_{sub} = d/m, \quad d,m \in \mathbb{N}
+                        $$
+                    </p>
+                    <p>$d$는 임베딩 차원, $m$은 서브벡터 개수이며 $d_{sub}$는 각 서브벡터의 차원이다.</p>
+                    <p>계산:</p>
+                    <p>
+                        $$
+                            x=[x^{(1)},\dots,x^{(m)}],\quad x^{(j)}\in\mathbb{R}^{d_{sub}}
+                        $$
+                    </p>
+                    <p>$x^{(j)}$는 원본 벡터 $x$를 $m$등분해 얻은 $j$번째 서브벡터를 뜻한다.</p>
+                    <p>출력:</p>
+                    <p>서브벡터 분할 규칙</p>
+                    <p>적용 차이:</p>
+                    <ul>
+                        <li><b>PQ</b>: 전체 벡터를 분할해 코드화 → 코드 길이 = $m \cdot nbits/8$바이트.</li>
+                        <li><b>IVFPQ</b>: <u>잔차</u> $r_x = x-c$를 분할해 코드화 → 코드 길이 동일하지만 잔차 덕분에 왜곡이 줄어 정확도↑.</li>
+                    </ul>
+                    <p>m↑ → 코드 길이↑·정확도↑·연산↑.</p>
+                </blockquote>
+            </div>
+            <pre>
+            </pre>
+            <h4>nbits (PQ/IVFPQ) — 코드북 크기/압축률</h4>
+            <blockquote>
+                <div>
+                    <p>입력:</p>
+                    <p>
+                        $$
+                            Inputs = nbits
+                        $$
+                        $$
+                            k=2^{nbits},\ nbits \in \mathbb{N}
+                        $$
+                    </p>
+                    <p>$nbits$는 서브코드 비트 수이며, 코드북 크기는 $2^{nbits}$로 결정된다.</p>
+                    <p>계산:</p>
+                    <p>
+                        $$
+                            code_{j}(x)=\arg\min_{t\in[1,k]} \left\|x^{(j)}-C_{j}[t]\right\|^{2}
+                        $$
+                    </p>
+                    <p>$C_j$는 서브공간 $j$의 코드북(크기 $k$)이고, 각 서브벡터 $x^{(j)}$를 가장 가까운 코드워드 인덱스로 양자화한다.</p>
+                    <p>출력:</p>
+                    <p>서브공간 코드북 $C_{j}$ 및 코드 인덱스</p>
+                    <p>적용 차이:</p>
+                    <ul>
+                        <li><b>PQ</b>: $D(q,x)=\sum_{j}\|q^{(j)}-C_{j}[code_{j}(x)]\|^{2}$ (원본 기준).</li>
+                        <li><b>IVFPQ</b>: $D(q,x)=\sum_{j}\|r_q^{(j)}-C_{j}[code_{j}(r_x)]\|^{2}$, 단 $r_q=q-c$는 쿼리마다 centroid별로 달라짐.</li>
+                    </ul>
+                    <p>nbits↑ → 코드북 $2^{nbits}$ 확대 → 정확도↑·메모리/인코딩시간↑.</p>
+                </div>
+            </blockquote>
+            <pre>
+            </pre>
+            <h4>IVFPQ residual (기본)</h4>
+            <blockquote>
+                <div>
+                    <p>입력:</p>
+                    <p>
+                        $$
+                            Inputs = \begin{bmatrix} x \\ c \end{bmatrix},\quad x,c \in \mathbb{R}^{d}
+                        $$
+                    </p>
+                    <p>$x$는 DB 벡터, $c$는 해당 벡터가 속한 centroid이다. 쿼리 $q$에 대해서는 별도로 $r_q=q-c$를 만든다.</p>
+                    <p>계산:</p>
+                    <p>잔차 $r_x = x - c$, $r_q = q - c$를 PQ 인코딩/거리 계산에 사용.</p>
+                    <p>출력:</p>
+                    <p>잔차 코드(각 서브공간 코드 인덱스) 및 잔차 기반 거리 테이블</p>
+                    <p>적용:</p>
+                    <p>centroid 보정으로 IVFPQ 정확도 향상(FAISS 기본 동작).</p>
+                </div>
+            </blockquote>
+            <pre>
+            </pre>
+            <hr>
+            <h2>4. HNSW 계열</h2>
+            <pre>
+            </pre>
+            <h4>M (HNSW) — 노드당 최대 이웃</h4>
+            <blockquote>
+                <div>
+                    <p>입력:</p>
+                    <p>
+                        $$
+                            Inputs = M,\quad M \in \mathbb{N}
+                        $$
+                    </p>
+                    <p>$M$는 한 노드가 가질 수 있는 최대 이웃 수(레벨 0은 보통 $2M$)를 의미한다.</p>
+                    <p>계산:</p>
+                    <p>삽입 시 후보에서 가장 근접한 이웃을 선택하되, 각 노드의 차수가 $M$을 넘지 않도록 잘라낸다 (레벨 0은 $2M$까지 허용).</p>
+                    <p>출력:</p>
+                    <p>모든 노드의 차수 $\le M$인 그래프(레벨 0은 $\le 2M$)</p>
+                    <p>적용:</p>
+                    <p>그래프 밀도(정확도/메모리 트레이드오프). M↑ → 정확도↑·메모리↑.</p>
+                </div>
+            </blockquote>
+            <pre>
+            </pre>
+            <h4>efConstruction (HNSW) — 빌드 시 탐색 폭</h4>
+            <blockquote>
+                <div>
+                    <p>입력:</p>
+                    <p>
+                        $$
+                            Inputs = efConstruction,\quad efConstruction \in \mathbb{N}
+                        $$
+                    </p>
+                    <p>계산:</p>
+                    <p>삽입 시 후보 리스트 크기를 $efConstruction$으로 유지하며 이웃 선택.</p>
+                    <p>출력:</p>
+                    <p>더 좋은 그래프 연결 구조</p>
+                    <p>적용:</p>
+                    <p>인덱스 빌드 시간/정확도에 영향. efConstruction↑ → 정확도↑·빌드시간↑.</p>
+                </div>
+            </blockquote>
+            <pre>
+            </pre>
+            <h4>efSearch (HNSW) — 검색 시 탐색 폭</h4>
+            <div>
+                <p>입력:</p>
+                <p>
+                    $$
+                        Inputs = efSearch,\quad efSearch \in \mathbb{N}
+                    $$
+                </p>
+            </div>
+            <div>
+                <p>계산:</p>
+                <p>검색 시 후보 리스트 크기를 $efSearch$로 유지하는 best-first 탐색.</p>
+            </div>
+            <div>
+                <p>출력:</p>
+                <p>탐색 후보 집합</p>
+            </div>
+            <div>
+                <p>적용:</p>
+                <p>검색 정확도/지연 트레이드오프 (보통 $efSearch \ge k$). efSearch↑ → recall↑·지연↑.</p>
+            </div>
+            <pre>
+            </pre>
+            <hr>
+            <h2>5. LSH</h2>
+            <pre>
+            </pre>
+            <h4>nbits (LSH) — 해시 길이</h4>
+            <div>
+                <p>입력:</p>
+                <p>
+                    $$
+                        Inputs = \{a_{1},\dots,a_{nbits}\}
+                    $$
+                    $$
+                        a_{i} \sim \mathcal{N}(0,1)^{d},\ i=1..nbits\ (\text{각 }a_i \in \mathbb{R}^{d})
+                    $$
+                </p>
+                <p>$nbits$는 해시 비트 수이며, 각 $a_i$는 길이 $d$의 무작위 투영 벡터이다.</p>
+            </div>
+            <div>
+                <p>계산:</p>
+                <p>
+                    $$
+                        b_{i}=\begin{cases}
+                        1 & \text{if } a_{i}^{T}x \ge 0 \\
+                        0 & \text{otherwise}
+                        \end{cases}
+                    $$
+                </p>
+                <p>$a_i^T x$는 투영값이며 부호에 따라 비트를 결정한다.</p>
+            </div>
+            <div>
+                <p>출력:</p>
+                <p>$b \in \{0,1\}^{nbits}$ (해시 코드)</p>
+            </div>
+            <div>
+                <p>적용:</p>
+                <p>해밍 거리로 근사 유사도 계산 및 랭킹. nbits↑ → 충돌↓·인덱스 크기↑.</p>
+            </div>
+        </div>
+    </body>
+</html>

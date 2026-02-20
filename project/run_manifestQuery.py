@@ -252,7 +252,7 @@ def expand_reference_entries(
                 f"\033[91m[Error] Folder '{folder_name}' is not registered under dataset '{dataset_key}'.\033[0m"
             )
         capture_id, label_display, label_token = info
-        reference_dir = dataset_dir / {folder_name}
+        reference_dir = dataset_dir / folder_name
         altitude_value = folder_name
         label_token = sanitize_group_token(folder_name)
         expanded.append(

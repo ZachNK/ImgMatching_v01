@@ -30,6 +30,14 @@
 - 3. FN
 - 4. TN
 
+$$
+\text{Hit@X} =
+\begin{cases}
+1, & d(\text{query}, \text{ref}) \le X \
+0, & d(\text{query}, \text{ref}) > X
+\end{cases}
+$$
+
 ## 2. GT 정의
 
 ### 2.1 쿼리 하나를 정한다

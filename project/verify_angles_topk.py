@@ -1,10 +1,11 @@
+
 """
 Display TopK results with per-hit geo/xyz distances and GT markers.
 
 실행 예시: 
 쿼리 이미지 (jamshill_data_flight 251124160703_00045.jpg) 로, 참조이미지 (e.g jamshill_data_reference)에 Top10까지 추출.
 faiss_4Redis.py로 추출한 json파일을 기반으로 score를 보여주고, 해당 이미지를 디스플레이.
-python verify_display_topk.py --query 251124160703_00045 --match data-reference --model vitb16 vith16+ vitl16 vitl16sat vits16 vits16+ --show-gps
+python verify_angles_topk.py --query 251124160703_00045 --match data-reference --model vitb16 vith16+ vitl16 vitl16sat vits16 vits16+ --show-gps
 
 """
 
@@ -64,6 +65,7 @@ MATCH_CHOICES = {
     "reference-reference": "reference2reference",
     "data-data": "db2db",
 }
+ANGLES: Tuple[int, ...] = (0, 45, 90, 135, 180, 225, 270, 315)
 
 _METADATA_CACHE: Dict[Path, Dict[str, Dict[str, object]]] = {}
 _MISSING_META_REPORTED: set[Path] = set()
@@ -222,6 +224,28 @@ def resolve_hit_image(filename: str, topk_root: Path) -> Path:
     img_base = topk_root / folder / f"{folder}_{frame}"
     found = _find_with_ext(img_base)
     return found or img_base.with_suffix(".jpg")
+
+
+def _extract_rotation(path_str: str) -> int:
+    """Extract rotation angle from path.
+    Priority: _rot### in filename, else last numeric token in ancestor folder names."""
+    m = re.search(r"_rot(\d{1,3})", path_str)
+    if m:
+        try:
+            return int(m.group(1))
+        except ValueError:
+            pass
+    p = Path(path_str)
+    for cand in (p.parent, p.parent.parent, p.parent.parent.parent):
+        if cand is None:
+            continue
+        tokens = cand.name.split("_")
+        for tok in reversed(tokens):
+            if tok.isdigit():
+                ang = int(tok)
+                if ang % 45 == 0 and 0 <= ang <= 360:
+                    return ang
+    return 0
 
 
 def _label_json_path(img_path: Path, dataset_root: Path) -> Path:
@@ -473,46 +497,47 @@ def plot_models_gallery(
     top_k: int,
     show_gps: bool,
     query_pose: Optional[str],
-    gt_geo: Optional[Tuple[str, Optional[float]]],
-    gt_xyz: Optional[Tuple[str, Optional[float]]],
 ) -> plt.Figure:
-    row_count = 2 + len(rows)
+    # spacers: 3 after query, 3 between each model block to avoid overlap
+    spacer_rows = 3 + 3 * max(len(rows) - 1, 0)
+    row_count = 2 + sum(len(r["angle_rows"]) for r in rows) + spacer_rows
     cols = max(top_k, 1) + 1
-    height_ratios = [0.4, 1.0] + [1.0] * len(rows)
 
-    # Use fixed margins and spacing to keep grid alignment stable across runs.
+    # Large, fixed-size cells and large canvas.
+    CELL_W, CELL_H = 15.0, 15.0
+    width = max(CELL_W * cols, 100.0)
+    height = max(CELL_H * row_count, 100.0)
     fig, axes = plt.subplots(
         row_count,
         cols,
-        figsize=(3 * cols, 2 * row_count),
-        gridspec_kw={"height_ratios": height_ratios},
+        figsize=(width, height),
         constrained_layout=False,
     )
-    fig.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, wspace=0.95, hspace=0.75)
+    # Increase padding and hspace to separate rows further.
+    fig.set_dpi(150)
+    fig.subplots_adjust(left=0.02, right=0.98, top=0.98, bottom=0.02, wspace=0.50, hspace=3.0)
     axes = np.atleast_2d(axes)
-    img_ratio = 0.9
+    img_ratio = 0.5
 
-    # Header row for TopK labels.
+    # Header row
     for ci in range(cols):
         ax = axes[0, ci]
         ax.axis("off")
-        if ci == 0:
-            ax.text(0.5, 0.5, "Query", ha="center", va="center", fontsize=10)
-        else:
-            ax.text(0.5, 0.5, f"Top{ci}", ha="center", va="center", fontsize=10)
+        ax.text(0.5, 0.25, "Query" if ci == 0 else f"Top{ci}", ha="center", va="center", fontsize=10)
 
+    # 간격 폭 조절
     def _split_cell_axes(base_ax: plt.Axes) -> Tuple[plt.Axes, plt.Axes]:
-        base_ax.axis("off")
-        gap = 0.0005
+        base_ax.axis("on")
+        gap = 0.02
         img_ax = base_ax.inset_axes([0.0, 0.0, img_ratio, 1.0])
-        txt_ax = base_ax.inset_axes([img_ratio, 0.0, 1.0 - img_ratio - gap, 1.0])
+        txt_ax = base_ax.inset_axes([img_ratio + gap, 0.0, 1.0 - img_ratio - gap, 1.0])
         for sub_ax in (img_ax, txt_ax):
             sub_ax.set_xticks([])
             sub_ax.set_yticks([])
             sub_ax.set_frame_on(False)
         return img_ax, txt_ax
 
-    # Query row.
+    # Query row
     query_timing_lines = _format_timing(rows[0].get("timing_ms") if rows else None)
     for ci in range(cols):
         ax = axes[1, ci]
@@ -523,106 +548,78 @@ def plot_models_gallery(
                 img_ax.imshow(img)
             except Exception:
                 img_ax.imshow(np.full((512, 512, 3), 220, dtype=np.uint8))
-                img_ax.text(
-                    0.5,
-                    0.5,
-                    "missing",
-                    ha="center",
-                    va="center",
-                    fontsize=10,
-                    color="red",
-                    transform=img_ax.transAxes,
-                )
+                img_ax.text(0.5, 0.5, "missing", ha="center", va="center", fontsize=10, color="red",
+                            transform=img_ax.transAxes)
             text_lines = [_format_id_index(query_img.name)]
             if show_gps and query_pose:
                 text_lines.append(query_pose)
                 text_lines.extend(query_timing_lines)
-            txt_ax.text(
-                0.0,
-                1.0,
-                "\n".join(text_lines),
-                ha="left",
-                va="top",
-                fontsize=9,
-                transform=txt_ax.transAxes,
-            )
+            txt_ax.text(0.0, 1.0, "\n".join(text_lines), ha="left", va="top", fontsize=7, transform=txt_ax.transAxes)
         else:
             ax.axis("off")
 
-    for r_idx, row in enumerate(rows, start=2):
-        model = row.get("model", f"model{r_idx}")
-        backend = row.get("backend")
-        total_ms = float(row.get("total_ms", 0.0) or 0.0)
-        hits = row.get("hits", [])
+    # spacer rows below query row (3 rows)
+    r = 2
+    for _ in range(3):
+        for ci in range(cols):
+            spacer_ax = axes[r, ci]
+            spacer_ax.axis("off")
+        r += 1
+    for model_idx, row in enumerate(rows):
+        model = row.get("model", f"model{r}")
         timing_lines = _format_timing(row.get("timing_ms"))
+        angle_rows: List[Tuple[int, List[Optional[Dict[str, object]]]]] = row.get("angle_rows", [])
+        first_label = True
+        for angle, hits_row in angle_rows:
+            label_ax = axes[r, 0]
+            label_ax.axis("off")
+            if first_label:
+                label_text = f"{model}\n{angle}°"
+            else:
+                label_text = f"{angle}°"
+            label_ax.text(0.5, 0.5, label_text, ha="center", va="center", fontsize=9)
+            first_label = False
 
-        label_ax = axes[r_idx, 0]
-        label_ax.axis("off")
-        label_text = f"{model}"
-        label_ax.text(0.5, 0.5, label_text, ha="center", va="center", fontsize=9)
+            for ci in range(1, cols):
+                ax = axes[r, ci]
+                hit = hits_row[ci - 1] if ci - 1 < len(hits_row) else None
+                img_ax, txt_ax = _split_cell_axes(ax)
+                if hit is None:
+                    # draw placeholder box same size as normal cells
+                    img_ax.imshow(np.full((8, 8, 3), 240, dtype=np.uint8))
+                    txt_ax.text(0.5, 0.5, "-", ha="center", va="center", fontsize=10, transform=txt_ax.transAxes)
+                    continue
+                filename = hit.get("filename", "") or hit.get("path", "")
+                img_path = hit.get("resolved_path") or resolve_hit_image(filename, TOPK_ROOT)
+                try:
+                    img = load_image(img_path)
+                    img_ax.imshow(img)
+                except Exception:
+                    img_ax.imshow(np.full((512, 512, 3), 220, dtype=np.uint8))
+                    img_ax.text(0.5, 0.5, "missing", ha="center", va="center", fontsize=8, color="red",
+                                transform=img_ax.transAxes)
+                text_lines: List[str] = []
+                if SHOW_SCORE and "score" in hit:
+                    text_lines.append(f"score={float(hit['score']):.3f}")
+                text_lines.append(_format_id_index(Path(filename).name or img_path.name))
+                text_lines.append(f"rot: {hit.get('rotation', 0)}°")
+                if show_gps:
+                    pose = hit.get("pose")
+                    if pose:
+                        text_lines.append(pose)
+                        text_lines.extend(timing_lines)
+                txt_ax.text(0.0, 1.0, "\n".join(text_lines), ha="left", va="top", fontsize=4,
+                            transform=txt_ax.transAxes)
+            r += 1
+        # spacer row between different models
+        if model_idx < len(rows) - 1:
+            # three spacer rows between models
+            for _ in range(3):
+                for ci in range(cols):
+                    spacer_ax = axes[r, ci]
+                    spacer_ax.axis("off")
+                r += 1
 
-        for ci in range(1, cols):
-            ax = axes[r_idx, ci]
-            hit_idx = ci - 1
-            if hit_idx >= len(hits) or hit_idx >= top_k:
-                ax.axis("off")
-                continue
-            img_ax, txt_ax = _split_cell_axes(ax)
-            hit = hits[hit_idx]
-            rank = hit.get("rank", hit_idx + 1)
-            label = ""
-            if SHOW_SCORE and "score" in hit:
-                label = f"score={float(hit['score']):.3f}"
-            filename = hit.get("filename", "") or hit.get("path", "")
-            img_path = hit.get("resolved_path") or resolve_hit_image(filename, TOPK_ROOT)
-            try:
-                img = load_image(img_path)
-                img_ax.imshow(img)
-            except Exception:
-                img_ax.imshow(np.full((512, 512, 3), 220, dtype=np.uint8))
-                img_ax.text(
-                    0.5,
-                    0.5,
-                    "missing",
-                    ha="center",
-                    va="center",
-                    fontsize=8,
-                    color="red",
-                    transform=img_ax.transAxes,
-                )
-            display_name = _format_id_index(Path(filename).name or img_path.name)
-
-            text_lines: List[str] = []
-            if label:
-                text_lines.append(label)
-            text_lines.append(display_name)
-
-            flags = []
-            if hit.get("is_gt_geo"):
-                flags.append("GTgeo")
-            if hit.get("is_gt_xyz"):
-                flags.append("GTxyz")
-            if flags:
-                text_lines.append(",".join(flags))
-
-            if show_gps:
-                pose = hit.get("pose")
-                if not pose:
-                    pose = _format_pose(_lookup_metadata(img_path, TOPK_ROOT))
-                    hit["pose"] = pose
-                if pose:
-                    text_lines.append(pose)
-                    text_lines.extend(timing_lines)
-
-            txt_ax.text(
-                0.0,
-                1.0,
-                "\n".join(text_lines),
-                ha="left",
-                va="top",
-                fontsize=8,
-                transform=txt_ax.transAxes,
-            )
     return fig
 
 
@@ -637,7 +634,7 @@ def _total_ms_from_payload(payload: Dict[str, object]) -> float:
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Display TopK with geo/xyz verification.")
+    parser = argparse.ArgumentParser(description="Display TopK grouped by rotation angles.")
     parser.add_argument(
         "--model",
         nargs="+",
@@ -661,6 +658,7 @@ def _parse_args() -> argparse.Namespace:
         help="FAISS output root (default: D:/ImgMatching_export/dinov3_faiss_match or /exports).",
     )
     parser.add_argument("--show-gps", action="store_true", help="Show lat/long/alt and attitude text.")
+    parser.add_argument("--topk", type=int, default=TOP_K, help="TopK size (default: 10).")
     parser.add_argument(
         "--reference-label",
         action="append",
@@ -681,6 +679,7 @@ def main() -> None:
     faiss_root = _resolve_faiss_root(args.faiss_root)
     direction_key = MATCH_CHOICES[args.match]
     capture, frame = _split_query_id(query_id)
+    top_k = int(args.topk)
 
     selected_paths: List[Path] = []
     for m in models:
@@ -689,7 +688,7 @@ def main() -> None:
             raise FileNotFoundError(f"{m} directory not found under {faiss_root} (match={direction_key})")
         encoder = _model_encoder(m)
         backend = _model_backend(m)
-        json_path = _find_faiss_json(model_dir, encoder, backend, capture, frame, direction_key, TOP_K)
+        json_path = _find_faiss_json(model_dir, encoder, backend, capture, frame, direction_key, top_k)
         if json_path is None:
             raise FileNotFoundError(
                 f"{m} JSON not found for query={capture}_{frame} under {model_dir} (match={direction_key})"
@@ -717,7 +716,7 @@ def main() -> None:
     rows: List[Dict[str, object]] = []
     for m, json_path in zip(models, selected_paths):
         payload = json.loads(json_path.read_text(encoding="utf-8"))
-        hits = payload.get("results", [])
+        hits = payload.get("results", [])[:top_k]
         total_ms = _total_ms_from_payload(payload)
         backend = payload.get("backend")
         timing = payload.get("timing_ms") if isinstance(payload.get("timing_ms"), dict) else {}
@@ -736,27 +735,41 @@ def main() -> None:
             processed_hit["dist_xyz_m"] = dist_xyz
             processed_hit["is_gt_geo"] = bool(imageref and gt_geo[0] and imageref == gt_geo[0])
             processed_hit["is_gt_xyz"] = bool(imageref and gt_xyz[0] and imageref == gt_xyz[0])
+            processed_hit["rotation"] = _extract_rotation(filename)
             if show_gps:
                 processed_hit["pose"] = _format_pose(_lookup_metadata(img_path, TOPK_ROOT))
             processed_hits.append(processed_hit)
+
+        angle_map: Dict[int, List[Optional[Dict[str, object]]]] = {ang: [None] * top_k for ang in ANGLES}
+        for hit in processed_hits:
+            rank = int(hit.get("rank", len(processed_hits)))
+            if 1 <= rank <= top_k:
+                ang = int(hit.get("rotation", 0))
+                if ang not in angle_map:
+                    angle_map[ang] = [None] * top_k
+                angle_map[ang][rank - 1] = hit
+        # keep only angles that actually have at least one hit
+        angle_rows = []
+        for ang in ANGLES:
+            hits_row = angle_map.get(ang, [None] * top_k)
+            if any(hits_row):
+                angle_rows.append((ang, hits_row))
         rows.append(
             {
                 "model": m,
                 "backend": backend,
                 "total_ms": total_ms,
                 "timing_ms": timing,
-                "hits": processed_hits,
+                "angle_rows": angle_rows,
             }
         )
 
     fig = plot_models_gallery(
         query_img,
         rows,
-        top_k=TOP_K,
+        top_k=top_k,
         show_gps=show_gps,
         query_pose=query_pose_text,
-        gt_geo=gt_geo,
-        gt_xyz=gt_xyz,
     )
     plt.show()
 

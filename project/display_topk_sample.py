@@ -5,7 +5,7 @@ Multi-model TopK viewer (hardcoded paths, faiss_4Redis JSON).
 - 모델별 결과 JSON 경로는 MODEL_JSONS에서 하드코딩(필요시 여기만 수정).
 
 사용 예시:
-  python project/display_topk_sample.py --model vitb16 vith16+ vitl16 vitl16sat
+  python display_topk_sample.py --model vitb16 vith16+ vitl16 vitl16sat
 
 동작:
 - 좌상단: 쿼리 이미지 1장.
