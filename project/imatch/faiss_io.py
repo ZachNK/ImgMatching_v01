@@ -83,7 +83,7 @@ def _normalize(vecs: np.ndarray) -> np.ndarray:
 
 
 def _load_records(
-    root: Optional[Path], role: str, show_progress: bool = False
+    root: Optional[Path], role: str, show_progress: bool = False, normalize: bool = True
 ) -> Tuple[np.ndarray, List[EmbeddingRecord], Dict[str, float]]:
     if root is None or not root.exists():
         raise FileNotFoundError(f"[{role}] root not found: {root}")
@@ -102,8 +102,11 @@ def _load_records(
     load_ms = (time.perf_counter() - t1) * 1000.0
     mat = np.stack(vecs, axis=0)
     t2 = time.perf_counter()
-    _normalize(mat)
-    norm_ms = (time.perf_counter() - t2) * 1000.0
+    if normalize:
+        _normalize(mat)
+        norm_ms = (time.perf_counter() - t2) * 1000.0
+    else:
+        norm_ms = 0.0
     total_ms = (time.perf_counter() - t0) * 1000.0
     print(
         f"[DEBUG] {role}: files={len(records)}, find_ms={find_ms:.2f}, load_ms={load_ms:.2f}, "

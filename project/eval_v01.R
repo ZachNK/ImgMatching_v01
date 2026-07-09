@@ -20,7 +20,7 @@ if (is.na(root_dir) || root_dir == "") {
 
 summary_csv <- file.path(root_dir, "eval_haversine_summary.csv")
 details_csv <- file.path(root_dir, "eval_haversine_details.csv")
-out_dir <- "D:/LabPCWhite/KNK_Lab/_Projects/R_faiss_stat/plots_eval_haversine"
+out_dir <- "D:/KNK_Lab/Projects/R_faiss_stat/plots_eval_haversine"
 
 if (!file.exists(summary_csv)) stop(paste("missing summary:", summary_csv))
 if (!file.exists(details_csv)) stop(paste("missing details:", details_csv))
@@ -34,13 +34,13 @@ details <- fread(details_csv)
 if ("haversine_recall_at_k" %in% names(summary)) {
   summary[, group := factor(group, levels = summary[order(-haversine_recall_at_k), group])]
 }
-summary[, group_short := tstrsplit(as.character(group), "_", fixed = TRUE)[[1]]]
+summary[, group_short := as.character(group)]
 if ("haversine_recall_at_k" %in% names(summary)) {
   summary[, group_short := factor(group_short, levels = unique(summary[order(-haversine_recall_at_k), group_short]))]
 } else {
   summary[, group_short := factor(group_short, levels = unique(group_short))]
 }
-details[, group_short := tstrsplit(as.character(group), "_", fixed = TRUE)[[1]]]
+details[, group_short := as.character(group)]
 details[, group_short := factor(group_short, levels = levels(summary$group_short))]
 
 to_long <- function(dt, cols, label_map, value_name = "value", id_var = "group_short") {

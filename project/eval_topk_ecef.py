@@ -1,8 +1,7 @@
 """
-python eval_topk_haversine.py --faiss-root /exports/dinov3_faiss_match --query-index /exports/jamshill_flight_index.json --reference-index /exports/jamshill_reference_index.json --topk 10 --haversine-hit-m 10 20 30 40 50 60 70 80 90 100
-
+python eval_topk_ecef.py --faiss-root /exports/dinov3_faiss_match --query-index /exports/jamshill_flight_index.json --reference-index /exports/jamshill_reference_index.json --topk 10 --ecef-hit-m 8 10 20 30
+python eval_topk_ecef.py --ecef-model sphere --sphere-radius-m 6371000 --ecef-hit-m 8 10 20
 """
-
 
 from __future__ import annotations
 
@@ -13,6 +12,10 @@ import math
 from pathlib import Path
 from statistics import mean, median
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+
+WGS84_A = 6378137.0
+WGS84_E2 = 6.69437999014e-3
+SPHERE_R = 6371000.0
 
 
 def _read_json(path: Path) -> Dict[str, Any]:
@@ -94,24 +97,93 @@ def _resolve_imageref(ref: Optional[str], index: Dict[str, Dict[str, Any]]) -> O
     return None
 
 
-def _haversine_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    r = 6371000.0
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2.0) ** 2
-    return 2.0 * r * math.asin(math.sqrt(a))
+def _to_float(value: Any) -> Optional[float]:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
-def _haversine_distance(q: Dict[str, Any], r: Dict[str, Any]) -> Optional[float]:
-    lat1 = q.get("latitude")
-    lon1 = q.get("longitude")
-    lat2 = r.get("latitude")
-    lon2 = r.get("longitude")
+def _ecef_xyz(
+    lat_deg: float,
+    lon_deg: float,
+    h_m: float,
+    model: str,
+    wgs84_a: float,
+    wgs84_e2: float,
+    sphere_radius_m: float,
+) -> Tuple[float, float, float]:
+    phi = math.radians(lat_deg)
+    lam = math.radians(lon_deg)
+    cphi = math.cos(phi)
+    sphi = math.sin(phi)
+    clam = math.cos(lam)
+    slam = math.sin(lam)
+
+    if model == "sphere":
+        r = sphere_radius_m + h_m
+        return r * cphi * clam, r * cphi * slam, r * sphi
+
+    denom = 1.0 - (wgs84_e2 * sphi * sphi)
+    if denom <= 0.0:
+        raise ValueError(
+            f"Invalid WGS84 denominator for latitude={lat_deg}, e2={wgs84_e2}. "
+            "Check --wgs84-e2 and latitude range."
+        )
+    n_phi = wgs84_a / math.sqrt(denom)
+    x = (n_phi + h_m) * cphi * clam
+    y = (n_phi + h_m) * cphi * slam
+    z = (n_phi * (1.0 - wgs84_e2) + h_m) * sphi
+    return x, y, z
+
+
+def _ecef_distance(
+    q: Dict[str, Any],
+    r: Dict[str, Any],
+    model: str,
+    wgs84_a: float,
+    wgs84_e2: float,
+    sphere_radius_m: float,
+    alt_default_m: float,
+) -> Optional[float]:
+    lat1 = _to_float(q.get("latitude"))
+    lon1 = _to_float(q.get("longitude"))
+    lat2 = _to_float(r.get("latitude"))
+    lon2 = _to_float(r.get("longitude"))
     if None in (lat1, lon1, lat2, lon2):
         return None
-    return _haversine_m(float(lat1), float(lon1), float(lat2), float(lon2))
+
+    alt1 = _to_float(q.get("altitude"))
+    alt2 = _to_float(r.get("altitude"))
+    h1 = alt_default_m if alt1 is None else alt1
+    h2 = alt_default_m if alt2 is None else alt2
+
+    x1, y1, z1 = _ecef_xyz(
+        lat_deg=lat1,
+        lon_deg=lon1,
+        h_m=h1,
+        model=model,
+        wgs84_a=wgs84_a,
+        wgs84_e2=wgs84_e2,
+        sphere_radius_m=sphere_radius_m,
+    )
+    x2, y2, z2 = _ecef_xyz(
+        lat_deg=lat2,
+        lon_deg=lon2,
+        h_m=h2,
+        model=model,
+        wgs84_a=wgs84_a,
+        wgs84_e2=wgs84_e2,
+        sphere_radius_m=sphere_radius_m,
+    )
+    dx = x1 - x2
+    dy = y1 - y2
+    dz = z1 - z2
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
 
 
 def _xy_distance(q: Dict[str, Any], r: Dict[str, Any]) -> Optional[float]:
@@ -130,11 +202,27 @@ def _min_distance_to_refs(
     query: Dict[str, Any],
     refs: Iterable[Tuple[str, Dict[str, Any]]],
     mode: str,
+    ecef_model: str,
+    wgs84_a: float,
+    wgs84_e2: float,
+    sphere_radius_m: float,
+    alt_default_m: float,
 ) -> Tuple[Optional[str], Optional[float]]:
     best_ref: Optional[str] = None
     best_dist: Optional[float] = None
     for ref_name, ref_meta in refs:
-        dist = _haversine_distance(query, ref_meta) if mode == "haversine" else _xy_distance(query, ref_meta)
+        if mode == "ecef":
+            dist = _ecef_distance(
+                query,
+                ref_meta,
+                model=ecef_model,
+                wgs84_a=wgs84_a,
+                wgs84_e2=wgs84_e2,
+                sphere_radius_m=sphere_radius_m,
+                alt_default_m=alt_default_m,
+            )
+        else:
+            dist = _xy_distance(query, ref_meta)
         if dist is None:
             continue
         if best_dist is None or dist < best_dist:
@@ -174,17 +262,17 @@ def _iter_result_files(root: Path, pattern: str) -> List[Path]:
     return sorted(p for p in root.rglob(pattern) if p.is_file())
 
 
-def _summarize_group(details: List[Dict[str, Any]], haversine_hit_keys: List[str]) -> Dict[str, Any]:
-    haversine_recall_flags = [d["haversine_recall"] for d in details if d["haversine_recall"] is not None]
+def _summarize_group(details: List[Dict[str, Any]], ecef_hit_keys: List[str]) -> Dict[str, Any]:
+    ecef_recall_flags = [d["ecef_recall"] for d in details if d["ecef_recall"] is not None]
     xy_recall_flags = [d["xy_recall"] for d in details if d["xy_recall"] is not None]
 
-    haversine_ranks = [d["haversine_rank"] for d in details if d["haversine_rank"] is not None]
+    ecef_ranks = [d["ecef_rank"] for d in details if d["ecef_rank"] is not None]
     xy_ranks = [d["xy_rank"] for d in details if d["xy_rank"] is not None]
 
-    haversine_top1 = [d["haversine_top1_m"] for d in details if d["haversine_top1_m"] is not None]
+    ecef_top1 = [d["ecef_top1_m"] for d in details if d["ecef_top1_m"] is not None]
     xy_top1 = [d["xy_top1_m"] for d in details if d["xy_top1_m"] is not None]
 
-    haversine_min = [d["haversine_min_topk_m"] for d in details if d["haversine_min_topk_m"] is not None]
+    ecef_min = [d["ecef_min_topk_m"] for d in details if d["ecef_min_topk_m"] is not None]
     xy_min = [d["xy_min_topk_m"] for d in details if d["xy_min_topk_m"] is not None]
 
     embed_ms = [d["embed_ms"] for d in details if d.get("embed_ms") is not None]
@@ -194,22 +282,22 @@ def _summarize_group(details: List[Dict[str, Any]], haversine_hit_keys: List[str
     index_train_ms = [d["index_train_ms"] for d in details if d.get("index_train_ms") is not None]
 
     extra: Dict[str, Any] = {}
-    for key in haversine_hit_keys:
+    for key in ecef_hit_keys:
         values = [d[key] for d in details if d.get(key) is not None]
         extra[key] = _safe_mean(values)
 
     return {
         "queries": len(details),
-        "haversine_recall_at_k": _safe_mean(haversine_recall_flags),
+        "ecef_recall_at_k": _safe_mean(ecef_recall_flags),
         "xy_recall_at_k": _safe_mean(xy_recall_flags),
-        "haversine_avg_rank": _safe_mean(haversine_ranks),
+        "ecef_avg_rank": _safe_mean(ecef_ranks),
         "xy_avg_rank": _safe_mean(xy_ranks),
-        "haversine_top1_mean_m": _safe_mean(haversine_top1),
-        "haversine_top1_median_m": _safe_median(haversine_top1),
+        "ecef_top1_mean_m": _safe_mean(ecef_top1),
+        "ecef_top1_median_m": _safe_median(ecef_top1),
         "xy_top1_mean_m": _safe_mean(xy_top1),
         "xy_top1_median_m": _safe_median(xy_top1),
-        "haversine_min_topk_mean_m": _safe_mean(haversine_min),
-        "haversine_min_topk_median_m": _safe_median(haversine_min),
+        "ecef_min_topk_mean_m": _safe_mean(ecef_min),
+        "ecef_min_topk_median_m": _safe_median(ecef_min),
         "xy_min_topk_mean_m": _safe_mean(xy_min),
         "xy_min_topk_median_m": _safe_median(xy_min),
         "embed_ms_mean": _safe_mean(embed_ms),
@@ -222,6 +310,11 @@ def _summarize_group(details: List[Dict[str, Any]], haversine_hit_keys: List[str
         "index_build_ms_median": _safe_median(index_build_ms),
         "index_train_ms_mean": _safe_mean(index_train_ms),
         "index_train_ms_median": _safe_median(index_train_ms),
+        "ecef_model": _single_or_none([d.get("ecef_model") for d in details]),
+        "wgs84_a": _single_or_none([d.get("wgs84_a") for d in details]),
+        "wgs84_e2": _single_or_none([d.get("wgs84_e2") for d in details]),
+        "sphere_radius_m": _single_or_none([d.get("sphere_radius_m") for d in details]),
+        "alt_default_m": _single_or_none([d.get("alt_default_m") for d in details]),
         "index_type": _single_or_none([d.get("index_type") for d in details]),
         "index_metric": _single_or_none([d.get("index_metric") for d in details]),
         "index_tag": _single_or_none([d.get("index_tag") for d in details]),
@@ -246,13 +339,13 @@ def _write_csv(path: Path, rows: List[Dict[str, Any]], columns: List[str]) -> No
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate FAISS TopK results using haversine and x/y distances.",
+        description="Evaluate FAISS TopK results using ECEF distance and x/y distances.",
     )
     parser.add_argument(
         "--faiss-root",
         type=Path,
         default=Path("/exports/dinov3_faiss_match"),
-        help="Root folder containing faiss_4Redis JSON outputs.",
+        help="Root folder containing FAISS result JSON outputs.",
     )
     parser.add_argument(
         "--query-index",
@@ -268,11 +361,42 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--topk", type=int, default=10, help="TopK threshold for evaluation.")
     parser.add_argument(
-        "--haversine-hit-m",
+        "--ecef-model",
+        type=str,
+        choices=("wgs84", "sphere"),
+        default="wgs84",
+        help="ECEF coordinate model: 'wgs84' (ellipsoid) or 'sphere' (simple).",
+    )
+    parser.add_argument(
+        "--wgs84-a",
+        type=float,
+        default=WGS84_A,
+        help="WGS84 semi-major axis a in meters (used when --ecef-model wgs84).",
+    )
+    parser.add_argument(
+        "--wgs84-e2",
+        type=float,
+        default=WGS84_E2,
+        help="WGS84 first eccentricity squared e^2 (used when --ecef-model wgs84).",
+    )
+    parser.add_argument(
+        "--sphere-radius-m",
+        type=float,
+        default=SPHERE_R,
+        help="Sphere radius in meters (used when --ecef-model sphere).",
+    )
+    parser.add_argument(
+        "--alt-default-m",
+        type=float,
+        default=0.0,
+        help="Fallback altitude (m) when metadata altitude is missing.",
+    )
+    parser.add_argument(
+        "--ecef-hit-m",
         type=float,
         nargs="+",
-        default=[30.0],
-        help="Haversine Hit@K distance thresholds in meters (e.g. 10 30 50).",
+        default=[8.0],
+        help="ECEF Hit@K distance thresholds in meters (e.g. 8 10 20 30).",
     )
     parser.add_argument(
         "--pattern",
@@ -283,25 +407,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--out-summary",
         type=Path,
-        default=Path("/exports/evaluation/eval_haversine_summary.json"),
+        default=Path("/exports/evaluation/eval_ecef_summary.json"),
         help="Summary JSON output path.",
     )
     parser.add_argument(
         "--out-details",
         type=Path,
-        default=Path("/exports/evaluation/eval_haversine_details.json"),
+        default=Path("/exports/evaluation/eval_ecef_details.json"),
         help="Per-query detail JSON output path.",
     )
     parser.add_argument(
         "--out-summary-csv",
         type=Path,
-        default=Path("/exports/evaluation/eval_haversine_summary.csv"),
+        default=Path("/exports/evaluation/eval_ecef_summary.csv"),
         help="Summary CSV output path.",
     )
     parser.add_argument(
         "--out-details-csv",
         type=Path,
-        default=Path("/exports/evaluation/eval_haversine_details.csv"),
+        default=Path("/exports/evaluation/eval_ecef_details.csv"),
         help="Per-query detail CSV output path.",
     )
     return parser.parse_args()
@@ -320,8 +444,8 @@ def main() -> None:
     query_index: Dict[str, Dict[str, Any]] = _read_json(args.query_index)
     ref_index: Dict[str, Dict[str, Any]] = _read_json(args.reference_index)
     ref_items = list(ref_index.items())
-    haversine_hit_thresholds = [float(t) for t in args.haversine_hit_m]
-    haversine_hit_keys = [f"haversine_hit_{_threshold_key(t)}" for t in haversine_hit_thresholds]
+    ecef_hit_thresholds = [float(t) for t in args.ecef_hit_m]
+    ecef_hit_keys = [f"ecef_hit_{_threshold_key(t)}" for t in ecef_hit_thresholds]
 
     result_files = _iter_result_files(args.faiss_root, args.pattern)
     if not result_files:
@@ -361,8 +485,26 @@ def main() -> None:
             print(f"[WARN] query metadata missing for {query_imageref}")
             continue
 
-        gt_haversine_ref, gt_haversine_dist = _min_distance_to_refs(query_meta, ref_items, mode="haversine")
-        gt_xy_ref, gt_xy_dist = _min_distance_to_refs(query_meta, ref_items, mode="xy")
+        gt_ecef_ref, gt_ecef_dist = _min_distance_to_refs(
+            query_meta,
+            ref_items,
+            mode="ecef",
+            ecef_model=args.ecef_model,
+            wgs84_a=float(args.wgs84_a),
+            wgs84_e2=float(args.wgs84_e2),
+            sphere_radius_m=float(args.sphere_radius_m),
+            alt_default_m=float(args.alt_default_m),
+        )
+        gt_xy_ref, gt_xy_dist = _min_distance_to_refs(
+            query_meta,
+            ref_items,
+            mode="xy",
+            ecef_model=args.ecef_model,
+            wgs84_a=float(args.wgs84_a),
+            wgs84_e2=float(args.wgs84_e2),
+            sphere_radius_m=float(args.sphere_radius_m),
+            alt_default_m=float(args.alt_default_m),
+        )
 
         top_hits = sorted(hits, key=lambda h: int(h.get("rank", 1)))[: args.topk]
         hit_imagerefs: List[Optional[str]] = []
@@ -383,7 +525,7 @@ def main() -> None:
                     return idx
             return None
 
-        haversine_dists: List[float] = []
+        ecef_dists: List[float] = []
         xy_dists: List[float] = []
         for name in hit_imagerefs:
             if not name:
@@ -391,19 +533,35 @@ def main() -> None:
             ref_meta = ref_index.get(name)
             if not isinstance(ref_meta, dict):
                 continue
-            haversine = _haversine_distance(query_meta, ref_meta)
+            ecef_m = _ecef_distance(
+                query_meta,
+                ref_meta,
+                model=args.ecef_model,
+                wgs84_a=float(args.wgs84_a),
+                wgs84_e2=float(args.wgs84_e2),
+                sphere_radius_m=float(args.sphere_radius_m),
+                alt_default_m=float(args.alt_default_m),
+            )
             xy = _xy_distance(query_meta, ref_meta)
-            if haversine is not None:
-                haversine_dists.append(haversine)
+            if ecef_m is not None:
+                ecef_dists.append(ecef_m)
             if xy is not None:
                 xy_dists.append(xy)
 
-        haversine_top1 = None
+        ecef_top1 = None
         xy_top1 = None
         if hit_imagerefs:
             top1_name = hit_imagerefs[0]
             if top1_name and top1_name in ref_index:
-                haversine_top1 = _haversine_distance(query_meta, ref_index[top1_name])
+                ecef_top1 = _ecef_distance(
+                    query_meta,
+                    ref_index[top1_name],
+                    model=args.ecef_model,
+                    wgs84_a=float(args.wgs84_a),
+                    wgs84_e2=float(args.wgs84_e2),
+                    sphere_radius_m=float(args.sphere_radius_m),
+                    alt_default_m=float(args.alt_default_m),
+                )
                 xy_top1 = _xy_distance(query_meta, ref_index[top1_name])
 
         detail = {
@@ -411,17 +569,17 @@ def main() -> None:
             "group": json_path.parent.name,
             "json": str(json_path),
             "topk": args.topk,
-            "gt_haversine": gt_haversine_ref,
-            "gt_haversine_m": gt_haversine_dist,
+            "gt_ecef": gt_ecef_ref,
+            "gt_ecef_m": gt_ecef_dist,
             "gt_xy": gt_xy_ref,
             "gt_xy_m": gt_xy_dist,
-            "haversine_rank": _rank_of(gt_haversine_ref),
+            "ecef_rank": _rank_of(gt_ecef_ref),
             "xy_rank": _rank_of(gt_xy_ref),
-            "haversine_recall": 1 if _rank_of(gt_haversine_ref) is not None else 0 if gt_haversine_ref else None,
+            "ecef_recall": 1 if _rank_of(gt_ecef_ref) is not None else 0 if gt_ecef_ref else None,
             "xy_recall": 1 if _rank_of(gt_xy_ref) is not None else 0 if gt_xy_ref else None,
-            "haversine_top1_m": haversine_top1,
+            "ecef_top1_m": ecef_top1,
             "xy_top1_m": xy_top1,
-            "haversine_min_topk_m": min(haversine_dists) if haversine_dists else None,
+            "ecef_min_topk_m": min(ecef_dists) if ecef_dists else None,
             "xy_min_topk_m": min(xy_dists) if xy_dists else None,
             "top1_score": hit_scores[0] if hit_scores else None,
             "embed_ms": float(embed_ms) if isinstance(embed_ms, (int, float)) else None,
@@ -429,6 +587,11 @@ def main() -> None:
             "total_ms": float(total_ms) if isinstance(total_ms, (int, float)) else None,
             "index_build_ms": float(index_build_ms) if isinstance(index_build_ms, (int, float)) else None,
             "index_train_ms": float(index_train_ms) if isinstance(index_train_ms, (int, float)) else None,
+            "ecef_model": args.ecef_model,
+            "wgs84_a": float(args.wgs84_a),
+            "wgs84_e2": float(args.wgs84_e2),
+            "sphere_radius_m": float(args.sphere_radius_m),
+            "alt_default_m": float(args.alt_default_m),
             "index_type": index_type,
             "index_metric": index_metric,
             "index_tag": index_tag,
@@ -439,26 +602,33 @@ def main() -> None:
             "train_size": int(train_size) if isinstance(train_size, (int, float)) else None,
             "train_count": int(train_count) if isinstance(train_count, (int, float)) else None,
         }
-        haversine_min_val = detail["haversine_min_topk_m"]
-        for th, key in zip(haversine_hit_thresholds, haversine_hit_keys):
-            if haversine_min_val is None:
+        ecef_min_val = detail["ecef_min_topk_m"]
+        for th, key in zip(ecef_hit_thresholds, ecef_hit_keys):
+            if ecef_min_val is None:
                 detail[key] = None
             else:
-                detail[key] = 1 if haversine_min_val <= th else 0
+                detail[key] = 1 if ecef_min_val <= th else 0
 
         grouped.setdefault(json_path.parent.name, []).append(detail)
 
     summaries: Dict[str, Any] = {
-        group: _summarize_group(items, haversine_hit_keys) for group, items in grouped.items()
+        group: _summarize_group(items, ecef_hit_keys) for group, items in grouped.items()
     }
     output = {
+        "config": {
+            "ecef_model": args.ecef_model,
+            "wgs84_a": float(args.wgs84_a),
+            "wgs84_e2": float(args.wgs84_e2),
+            "sphere_radius_m": float(args.sphere_radius_m),
+            "alt_default_m": float(args.alt_default_m),
+        },
         "summary": summaries,
         "details": grouped,
     }
 
     args.out_summary.parent.mkdir(parents=True, exist_ok=True)
     args.out_details.parent.mkdir(parents=True, exist_ok=True)
-    args.out_summary.write_text(json.dumps(output["summary"], ensure_ascii=False, indent=2), encoding="utf-8")
+    args.out_summary.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8")
     args.out_details.write_text(json.dumps(output["details"], ensure_ascii=False, indent=2), encoding="utf-8")
 
     summary_rows: List[Dict[str, Any]] = []
@@ -477,16 +647,16 @@ def main() -> None:
     summary_cols = [
         "group",
         "queries",
-        "haversine_recall_at_k",
+        "ecef_recall_at_k",
         "xy_recall_at_k",
-        "haversine_avg_rank",
+        "ecef_avg_rank",
         "xy_avg_rank",
-        "haversine_top1_mean_m",
-        "haversine_top1_median_m",
+        "ecef_top1_mean_m",
+        "ecef_top1_median_m",
         "xy_top1_mean_m",
         "xy_top1_median_m",
-        "haversine_min_topk_mean_m",
-        "haversine_min_topk_median_m",
+        "ecef_min_topk_mean_m",
+        "ecef_min_topk_median_m",
         "xy_min_topk_mean_m",
         "xy_min_topk_median_m",
         "embed_ms_mean",
@@ -499,6 +669,11 @@ def main() -> None:
         "index_build_ms_median",
         "index_train_ms_mean",
         "index_train_ms_median",
+        "ecef_model",
+        "wgs84_a",
+        "wgs84_e2",
+        "sphere_radius_m",
+        "alt_default_m",
         "index_type",
         "index_metric",
         "index_tag",
@@ -509,23 +684,23 @@ def main() -> None:
         "train_size",
         "train_count",
     ]
-    summary_cols += haversine_hit_keys
+    summary_cols += ecef_hit_keys
     detail_cols = [
         "group",
         "query",
         "json",
         "topk",
-        "gt_haversine",
-        "gt_haversine_m",
+        "gt_ecef",
+        "gt_ecef_m",
         "gt_xy",
         "gt_xy_m",
-        "haversine_rank",
+        "ecef_rank",
         "xy_rank",
-        "haversine_recall",
+        "ecef_recall",
         "xy_recall",
-        "haversine_top1_m",
+        "ecef_top1_m",
         "xy_top1_m",
-        "haversine_min_topk_m",
+        "ecef_min_topk_m",
         "xy_min_topk_m",
         "top1_score",
         "embed_ms",
@@ -533,6 +708,11 @@ def main() -> None:
         "total_ms",
         "index_build_ms",
         "index_train_ms",
+        "ecef_model",
+        "wgs84_a",
+        "wgs84_e2",
+        "sphere_radius_m",
+        "alt_default_m",
         "index_type",
         "index_metric",
         "index_tag",
@@ -543,7 +723,7 @@ def main() -> None:
         "train_size",
         "train_count",
     ]
-    detail_cols += haversine_hit_keys
+    detail_cols += ecef_hit_keys
 
     _write_csv(args.out_summary_csv, summary_rows, summary_cols)
     _write_csv(args.out_details_csv, detail_rows, detail_cols)
@@ -556,3 +736,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

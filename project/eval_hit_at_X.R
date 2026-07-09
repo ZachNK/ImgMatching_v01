@@ -19,7 +19,7 @@ if (is.na(root_dir) || root_dir == "") {
 }
 
 summary_csv <- file.path(root_dir, "eval_haversine_summary.csv")
-out_dir <- "D:/LabPCWhite/KNK_Lab/_Projects/R_faiss_stat/plots_eval_haversine_hit_at_x"
+out_dir <- "D:/KNK_Lab/Projects/R_faiss_stat/plots_eval_haversine_hit_at_x"
 
 if (!file.exists(summary_csv)) stop(paste("missing summary:", summary_csv))
 if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -32,7 +32,7 @@ if (!"total_ms_mean" %in% names(summary)) {
 if ("haversine_recall_at_k" %in% names(summary)) {
   summary[, group := factor(group, levels = summary[order(-haversine_recall_at_k), group])]
 }
-summary[, group_short := tstrsplit(as.character(group), "_", fixed = TRUE)[[1]]]
+summary[, group_short := as.character(group)]
 if ("haversine_recall_at_k" %in% names(summary)) {
   summary[, group_short := factor(group_short, levels = unique(summary[order(-haversine_recall_at_k), group_short]))]
 } else {
